@@ -53,6 +53,11 @@ if [[ ${ref_y1} -lt ${ref_start_yr} ]]; then
     ref_Y1="$(printf "%04d" ${ref_y1})"
 fi
 
+if [[ ${ref_y1} -lt ${y1} ]]; then
+    ref_y1=${y1}
+    ref_Y1="$(printf "%04d" ${ref_y1})"
+fi
+
 num_years=$((y2 - y1 + 1))
 ref_end_yr=$((ref_y1 + num_years - 1))
 
@@ -63,6 +68,11 @@ fi
 
 if [[ ${ref_y2} -gt ${ref_final_yr} ]]; then
     ref_y2=${ref_final_yr}
+    ref_Y2="$(printf "%04d" ${ref_y2})"
+fi
+
+if [[ ${ref_y2} -gt ${y2} ]]; then
+    ref_y2=${y2}
     ref_Y2="$(printf "%04d" ${ref_y2})"
 fi
 
@@ -328,12 +338,13 @@ create_links_ts_obs() {
 
   for file in ${ts_dir_source}/*.nc; do
     fname=$(basename "$file")
-    # Match two time patterns (YYYYMM or YYYYMMDD) separated by _ or -
-    if [[ ${fname} =~ ([0-9]{6,8})[_-]([0-9]{6,8}) ]]; then
-      YYYYS="${BASH_REMATCH[1]}"
-      YYYYE="${BASH_REMATCH[2]}"
+
+    if [[ $fname =~ ^(.+)\.([0-9]{4})([0-9]{2}){1,2}[-_]([0-9]{4})([0-9]{2}){1,2}\.nc$ ]]; then
+      PREFIX="${BASH_REMATCH[1]}"   # everything before the .YYYY...
+      YYYYS="${BASH_REMATCH[2]}"    # start year
+      YYYYE="${BASH_REMATCH[4]}"    # end year
     else
-      echo "Warning: Could not extract dates from ${fname}"
+      echo "Warning: Could not parse $fname"
       continue
     fi
 
@@ -345,9 +356,6 @@ create_links_ts_obs() {
     if [[ ${YYYYE} -gt ${end_year} ]]; then
       YYYYE="${end_year}"
     fi
-
-    # Extract prefix (before the date range, ignoring separator)
-    PREFIX="${fname%%[._-]${YYYYS}*}"
 
     ttag="$(printf "%04d" "${YYYYS}")01-$(printf "%04d" "${YYYYE}")12"
     combined_name="${PREFIX}.${ttag}.nc"
@@ -1007,6 +1015,12 @@ refname = obs_dic[varOBS][refset]
 refpath = obs_dic[varOBS][refname]['file_path']
 reftyrs = int(str(obs_dic[varOBS][refname]['yymms'])[0:4])
 reftyre = int(str(obs_dic[varOBS][refname]['yymme'])[0:4])
+
+# --- clip the range ---
+if reftyrs < ${ref_y1}:
+    reftyrs = ${ref_y1}
+if reftyre > ${ref_y2}:
+    reftyre = ${ref_y2}
 
 # Call the function
 lstcmd = generate_varmode_cmds(
