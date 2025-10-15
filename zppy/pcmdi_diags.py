@@ -70,7 +70,7 @@ def pcmdi_diags(config, script_dir, existing_bundles, job_ids_file):
             if c["sub"] != "synthetic_plots":
                 check_and_define_parameters(c)
             else:
-                prefix = f"pcmdi_diags_{c['sub']}_{c['run_type']}"
+                prefix = f"pcmdi_diags_{c['sub']}_{c['run_type']}_{c['year1']:04d}-{c['year2']:04d}_vs_{c['ref_year1']:04d}-{c['ref_year2']:04d}"
                 print(prefix)
                 c["prefix"] = prefix
 

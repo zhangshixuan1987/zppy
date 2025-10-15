@@ -47,33 +47,44 @@ Y2="$(printf "%04d" ${y2})"
 ref_Y1="$(printf "%04d" ${ref_y1})"
 ref_Y2="$(printf "%04d" ${ref_y2})"
 
-# Refine reference range
-if [[ ${ref_y1} -lt ${ref_start_yr} ]]; then
-    ref_y1=${ref_start_yr}
-    ref_Y1="$(printf "%04d" ${ref_y1})"
-fi
-
-if [[ ${ref_y1} -lt ${y1} ]]; then
-    ref_y1=${y1}
-    ref_Y1="$(printf "%04d" ${ref_y1})"
-fi
-
 num_years=$((y2 - y1 + 1))
 ref_end_yr=$((ref_y1 + num_years - 1))
 
-if [[ ${ref_y2} -gt ${ref_end_yr} ]]; then
-    ref_y2=${ref_end_yr}
-    ref_Y2="$(printf "%04d" ${ref_y2})"
+# Keep originals for fallback
+orig_ref_y1=${ref_y1}
+orig_ref_y2=${ref_y2}
+if [[ ${orig_ref_y1} -lt ${ref_start_yr} ]]; then
+   orig_ref_y1=${ref_start_yr}
 fi
-
-if [[ ${ref_y2} -gt ${ref_final_yr} ]]; then
-    ref_y2=${ref_final_yr}
-    ref_Y2="$(printf "%04d" ${ref_y2})"
+if [[ ${orig_ref_y2} -gt ${ref_final_yr} ]]; then
+   orig_ref_y2=${ref_final_yr}
 fi
-
-if [[ ${ref_y2} -gt ${y2} ]]; then
-    ref_y2=${y2}
-    ref_Y2="$(printf "%04d" ${ref_y2})"
+# Refine reference range
+if [[ ${ref_start_yr} -le ${y1} && ${ref_final_yr} -ge ${y2} ]]; then
+   # Availability fully covers analysis: use [y1, y2]
+   ref_y1=${y1}
+   ref_y2=${y2}
+else
+   # Case 2: Prefer the user's clamped custom window; only tweak if needed
+   # 2a) If clamped custom overlaps the analysis window, use the intersection
+   if [[ ${orig_ref_y1} -le ${y2} && ${orig_ref_y2} -ge ${y1} ]]; then
+      # minimal trimming to fit inside [y1, y2]
+      ref_y1=$(( orig_ref_y1 > y1 ? orig_ref_y1 : y1 ))
+      ref_y2=$(( orig_ref_y2 < y2 ? orig_ref_y2 : y2 ))
+   else
+      # 2b) No overlap between custom and analysis:
+      #     try availability i∩ analysis (minimal change wrt both)
+      ovl_start=$(( ref_start_yr > y1 ? ref_start_yr : y1 ))
+      ovl_end=$(( ref_final_yr < y2 ? ref_final_yr : y2 ))
+      if [[ ${ovl_start} -le ${ovl_end} ]]; then
+         ref_y1=${ovl_start}
+         ref_y2=${ovl_end}
+      else
+         # 2c) Truly no overlap possible; fall back to clamped custom window
+         ref_y1=${orig_ref_y1}
+         ref_y2=${orig_ref_y2}
+      fi
+   fi
 fi
 
 {% endif %}
@@ -194,7 +205,7 @@ create_links_acyc_climo_obs() {
   for file in ${ts_dir_source}/*.nc; do
     local fname
     local YYYYS YYYYE
-    local PREFIX
+    local substring
     local ttag tmp_file MM combined_name
 
     fname=$(basename "${file}")
@@ -212,8 +223,8 @@ create_links_acyc_climo_obs() {
     if [[ ${YYYYS} -lt ${begin_year} ]]; then YYYYS=${begin_year}; fi
     if [[ ${YYYYE} -gt ${end_year} ]]; then YYYYE=${end_year}; fi
 
-    # Extract prefix before the date range (removes from .${YYYYS} or -${YYYYS})
-    PREFIX="${fname%%[._-]${YYYYS}*}"
+    # Extract string before the date range (removes from .${YYYYS} or -${YYYYS})
+    substring="${fname%%[._-]${YYYYS}*}"
 
     ttag="$(printf "%04d" "${YYYYS}")01-$(printf "%04d" "${YYYYE}")12"
     tmp_file="tmp_combine_${ttag}.nc"
@@ -226,7 +237,7 @@ create_links_acyc_climo_obs() {
       ncra -O -h -F -d time,"${month}",,12 "${tmp_file}" "tmp_clm_${MM}.nc"
     done
 
-    combined_name="${PREFIX}.${ttag}.AC.${case_id}.nc"
+    combined_name="${substring}.${ttag}.AC.${case_id}.nc"
     ncrcat -O tmp_clm_*.nc "${combined_name}"
 
     # Adjust time metadata
@@ -334,13 +345,13 @@ create_links_ts_obs() {
   mkdir -p "${ts_dir_destination}"
   cd "${ts_dir_destination}" || exit
 
-  local file fname PREFIX YYYYS YYYYE ttag combined_name
+  local file fname substring YYYYS YYYYE ttag combined_name
 
   for file in ${ts_dir_source}/*.nc; do
     fname=$(basename "$file")
 
     if [[ $fname =~ ^(.+)\.([0-9]{4})([0-9]{2}){1,2}[-_]([0-9]{4})([0-9]{2}){1,2}\.nc$ ]]; then
-      PREFIX="${BASH_REMATCH[1]}"   # everything before the .YYYY...
+      substring="${BASH_REMATCH[1]}"   # everything before the .YYYY...
       YYYYS="${BASH_REMATCH[2]}"    # start year
       YYYYE="${BASH_REMATCH[4]}"    # end year
     else
@@ -358,7 +369,7 @@ create_links_ts_obs() {
     fi
 
     ttag="$(printf "%04d" "${YYYYS}")01-$(printf "%04d" "${YYYYE}")12"
-    combined_name="${PREFIX}.${ttag}.nc"
+    combined_name="${substring}.${ttag}.nc"
 
     # Extract subset of time series
     ncrcat -O -d time,"${YYYYS}-01-01","${YYYYE}-12-31" "${file}" "${combined_name}"
