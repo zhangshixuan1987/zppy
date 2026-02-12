@@ -41,51 +41,24 @@ ref_y2={{ ref_year2 }}
 ref_start_yr={{ ref_start_yr }}
 ref_final_yr={{ ref_final_yr }}
 
+num_years=$((y2 - y1 + 1))
+ref_end_yr=$((ref_y1 + num_years - 1))
+
+if [[ ${y1} -ge ${y2} || ${ref_y1} -ge ${ref_y2} || ${ref_start_yr} -ge ${ref_final_yr} ]]; then
+   echo "ERROR (99)" > {{ prefix }}.status
+   exit 99
+fi
+
+if [[ ${ref_y1} -lt ${ref_start_yr} || ${ref_y2} -gt ${ref_final_yr} ]]; then
+   echo "ERROR (99)" > {{ prefix }}.status
+   exit 99
+fi
+
 # Formatted versions
 Y1="$(printf "%04d" ${y1})"
 Y2="$(printf "%04d" ${y2})"
 ref_Y1="$(printf "%04d" ${ref_y1})"
 ref_Y2="$(printf "%04d" ${ref_y2})"
-
-num_years=$((y2 - y1 + 1))
-ref_end_yr=$((ref_y1 + num_years - 1))
-
-# Keep originals for fallback
-orig_ref_y1=${ref_y1}
-orig_ref_y2=${ref_y2}
-if [[ ${orig_ref_y1} -lt ${ref_start_yr} ]]; then
-   orig_ref_y1=${ref_start_yr}
-fi
-if [[ ${orig_ref_y2} -gt ${ref_final_yr} ]]; then
-   orig_ref_y2=${ref_final_yr}
-fi
-# Refine reference range
-if [[ ${ref_start_yr} -le ${y1} && ${ref_final_yr} -ge ${y2} ]]; then
-   # Availability fully covers analysis: use [y1, y2]
-   ref_y1=${y1}
-   ref_y2=${y2}
-else
-   # Case 2: Prefer the user's clamped custom window; only tweak if needed
-   # 2a) If clamped custom overlaps the analysis window, use the intersection
-   if [[ ${orig_ref_y1} -le ${y2} && ${orig_ref_y2} -ge ${y1} ]]; then
-      # minimal trimming to fit inside [y1, y2]
-      ref_y1=$(( orig_ref_y1 > y1 ? orig_ref_y1 : y1 ))
-      ref_y2=$(( orig_ref_y2 < y2 ? orig_ref_y2 : y2 ))
-   else
-      # 2b) No overlap between custom and analysis:
-      #     try availability i∩ analysis (minimal change wrt both)
-      ovl_start=$(( ref_start_yr > y1 ? ref_start_yr : y1 ))
-      ovl_end=$(( ref_final_yr < y2 ? ref_final_yr : y2 ))
-      if [[ ${ovl_start} -le ${ovl_end} ]]; then
-         ref_y1=${ovl_start}
-         ref_y2=${ovl_end}
-      else
-         # 2c) Truly no overlap possible; fall back to clamped custom window
-         ref_y1=${orig_ref_y1}
-         ref_y2=${orig_ref_y2}
-      fi
-   fi
-fi
 
 {% endif %}
 
